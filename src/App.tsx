@@ -32,6 +32,7 @@ import "./styles/about.css";
 import "./styles/tabbar.css";
 import "./styles/worktree-modal.css";
 import "./styles/clone-modal.css";
+import "./styles/workspace-paths-modal.css";
 import "./styles/workspace-from-url-modal.css";
 import "./styles/mobile-remote-workspace-modal.css";
 import "./styles/branch-switcher-modal.css";
@@ -240,6 +241,10 @@ function MainApp() {
     appendMobileRemoteWorkspacePathFromRecent,
     cancelMobileRemoteWorkspacePathPrompt,
     submitMobileRemoteWorkspacePathPrompt,
+    workspacePathsPrompt,
+    updateWorkspacePathsPromptValue,
+    cancelWorkspacePathsPrompt,
+    confirmWorkspacePathsPrompt,
     addCloneAgent,
     addWorktreeAgent,
     connectWorkspace,
@@ -825,8 +830,8 @@ function MainApp() {
     gitPanelMode === "prs" ||
     (shouldLoadDiffs && diffSource === "pr");
 
-  const alertError = useCallback((error: unknown) => {
-    alert(error instanceof Error ? error.message : String(error));
+  const alertError = useCallback((errorMessage: string) => {
+    alert(errorMessage);
   }, []);
   const { branches, checkoutBranch, checkoutPullRequest, createBranch } = useGitBranches({
     activeWorkspace,
@@ -842,7 +847,7 @@ function MainApp() {
       await Promise.resolve(refreshGitStatus());
       await Promise.resolve(refreshGitLog());
     } catch (error) {
-      alertError(error);
+      alertError(error instanceof Error ? error.message : String(error));
     }
   };
   const handleCreateBranch = async (name: string) => {
@@ -886,7 +891,9 @@ function MainApp() {
     onRefreshGitStatus: refreshGitStatus,
     onRefreshGitDiffs: refreshGitDiffs,
     onClearGitRootCandidates: clearGitRootCandidates,
-    onError: alertError,
+    onError: (error) => {
+      alertError(error instanceof Error ? error.message : String(error));
+    },
   });
   const {
     initGitRepoPrompt,
@@ -1019,7 +1026,9 @@ function MainApp() {
     accountByWorkspace,
     refreshAccountInfo,
     refreshAccountRateLimits,
-    alertError,
+    alertError: (error) => {
+      alertError(error instanceof Error ? error.message : String(error));
+    },
   });
   const {
     newAgentDraftWorkspaceId,
@@ -1627,7 +1636,7 @@ function MainApp() {
       try {
         await createPrompt(data);
       } catch (error) {
-        alertError(error);
+        alertError(error instanceof Error ? error.message : String(error));
       }
     },
     [alertError, createPrompt],
@@ -1644,7 +1653,7 @@ function MainApp() {
       try {
         await updatePrompt(data);
       } catch (error) {
-        alertError(error);
+        alertError(error instanceof Error ? error.message : String(error));
       }
     },
     [alertError, updatePrompt],
@@ -1655,7 +1664,7 @@ function MainApp() {
       try {
         await deletePrompt(path);
       } catch (error) {
-        alertError(error);
+        alertError(error instanceof Error ? error.message : String(error));
       }
     },
     [alertError, deletePrompt],
@@ -1666,7 +1675,7 @@ function MainApp() {
       try {
         await movePrompt(data);
       } catch (error) {
-        alertError(error);
+        alertError(error instanceof Error ? error.message : String(error));
       }
     },
     [alertError, movePrompt],
@@ -1677,7 +1686,7 @@ function MainApp() {
       const path = await getWorkspacePromptsDir();
       await revealItemInDir(path);
     } catch (error) {
-      alertError(error);
+      alertError(error instanceof Error ? error.message : String(error));
     }
   }, [alertError, getWorkspacePromptsDir]);
 
@@ -1689,7 +1698,7 @@ function MainApp() {
       }
       await revealItemInDir(path);
     } catch (error) {
-      alertError(error);
+      alertError(error instanceof Error ? error.message : String(error));
     }
   }, [alertError, getGlobalPromptsDir]);
 
@@ -2718,6 +2727,10 @@ function MainApp() {
         onClonePromptClearCopiesFolder={clearCloneCopiesFolder}
         onClonePromptCancel={cancelClonePrompt}
         onClonePromptConfirm={confirmClonePrompt}
+        workspacePathsPrompt={workspacePathsPrompt}
+        onWorkspacePathsPromptChange={updateWorkspacePathsPromptValue}
+        onWorkspacePathsPromptCancel={cancelWorkspacePathsPrompt}
+        onWorkspacePathsPromptConfirm={confirmWorkspacePathsPrompt}
         workspaceFromUrlPrompt={workspaceFromUrlPrompt}
         workspaceFromUrlCanSubmit={canSubmitWorkspaceFromUrlPrompt}
         onWorkspaceFromUrlPromptUrlChange={updateWorkspaceFromUrlUrl}
