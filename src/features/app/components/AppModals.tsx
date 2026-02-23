@@ -10,6 +10,7 @@ import { WorkspacePathsPrompt } from "../../workspaces/components/WorkspacePaths
 import type { WorkspacePathsPromptState } from "../hooks/useWorkspaceDialogs";
 import type { BranchSwitcherState } from "../../git/hooks/useBranchSwitcher";
 import { useGitBranches } from "../../git/hooks/useGitBranches";
+import { useRemoteDirectoryPicker } from "../hooks/useRemoteDirectoryPicker";
 
 const RenameThreadPrompt = lazy(() =>
   import("../../threads/components/RenameThreadPrompt").then((module) => ({
@@ -36,6 +37,11 @@ const MobileRemoteWorkspacePrompt = lazy(() =>
     default: module.MobileRemoteWorkspacePrompt,
   })),
 );
+const RemoteDirectoryPickerPrompt = lazy(() =>
+  import("../../workspaces/components/RemoteDirectoryPickerPrompt").then((module) => ({
+    default: module.RemoteDirectoryPickerPrompt,
+  })),
+);
 const BranchSwitcherPrompt = lazy(() =>
   import("../../git/components/BranchSwitcherPrompt").then((module) => ({
     default: module.BranchSwitcherPrompt,
@@ -60,6 +66,9 @@ type MobileRemoteWorkspacePathPromptState = {
   error: string | null;
   recentPaths: string[];
 } | null;
+type RemoteDirectoryPickerState = ReturnType<
+  typeof useRemoteDirectoryPicker
+>["remoteDirectoryPicker"];
 
 type AppModalsProps = {
   renamePrompt: RenamePromptState;
@@ -97,8 +106,22 @@ type AppModalsProps = {
   onClonePromptConfirm: () => void;
   workspacePathsPrompt: WorkspacePathsPromptState;
   onWorkspacePathsPromptChange: (value: string) => void;
+  onWorkspacePathsPromptBrowseDirectory: (path: string) => void;
+  onWorkspacePathsPromptBrowseParentDirectory: () => void;
+  onWorkspacePathsPromptBrowseHomeDirectory: () => void;
+  onWorkspacePathsPromptRetryDirectoryListing: () => void;
+  onWorkspacePathsPromptToggleHiddenDirectories: () => void;
+  onWorkspacePathsPromptUseCurrentDirectory: () => void;
   onWorkspacePathsPromptCancel: () => void;
   onWorkspacePathsPromptConfirm: () => void;
+  remoteDirectoryPicker: RemoteDirectoryPickerState;
+  onRemoteDirectoryPickerBrowseDirectory: (path: string) => void;
+  onRemoteDirectoryPickerBrowseParentDirectory: () => void;
+  onRemoteDirectoryPickerBrowseHomeDirectory: () => void;
+  onRemoteDirectoryPickerRetryDirectoryListing: () => void;
+  onRemoteDirectoryPickerToggleHiddenDirectories: () => void;
+  onRemoteDirectoryPickerCancel: () => void;
+  onRemoteDirectoryPickerConfirm: () => void;
   workspaceFromUrlPrompt: WorkspaceFromUrlPromptState;
   workspaceFromUrlCanSubmit: boolean;
   onWorkspaceFromUrlPromptUrlChange: (value: string) => void;
@@ -155,8 +178,22 @@ export const AppModals = memo(function AppModals({
   onClonePromptConfirm,
   workspacePathsPrompt,
   onWorkspacePathsPromptChange,
+  onWorkspacePathsPromptBrowseDirectory,
+  onWorkspacePathsPromptBrowseParentDirectory,
+  onWorkspacePathsPromptBrowseHomeDirectory,
+  onWorkspacePathsPromptRetryDirectoryListing,
+  onWorkspacePathsPromptToggleHiddenDirectories,
+  onWorkspacePathsPromptUseCurrentDirectory,
   onWorkspacePathsPromptCancel,
   onWorkspacePathsPromptConfirm,
+  remoteDirectoryPicker,
+  onRemoteDirectoryPickerBrowseDirectory,
+  onRemoteDirectoryPickerBrowseParentDirectory,
+  onRemoteDirectoryPickerBrowseHomeDirectory,
+  onRemoteDirectoryPickerRetryDirectoryListing,
+  onRemoteDirectoryPickerToggleHiddenDirectories,
+  onRemoteDirectoryPickerCancel,
+  onRemoteDirectoryPickerConfirm,
   workspaceFromUrlPrompt,
   workspaceFromUrlCanSubmit,
   onWorkspaceFromUrlPromptUrlChange,
@@ -264,7 +301,14 @@ export const AppModals = memo(function AppModals({
         <WorkspacePathsPrompt
           value={workspacePathsPrompt.value}
           error={workspacePathsPrompt.error}
+          browser={workspacePathsPrompt.browser}
           onChange={onWorkspacePathsPromptChange}
+          onBrowseDirectory={onWorkspacePathsPromptBrowseDirectory}
+          onBrowseParentDirectory={onWorkspacePathsPromptBrowseParentDirectory}
+          onBrowseHomeDirectory={onWorkspacePathsPromptBrowseHomeDirectory}
+          onRetryDirectoryListing={onWorkspacePathsPromptRetryDirectoryListing}
+          onToggleHiddenDirectories={onWorkspacePathsPromptToggleHiddenDirectories}
+          onUseCurrentDirectory={onWorkspacePathsPromptUseCurrentDirectory}
           onCancel={onWorkspacePathsPromptCancel}
           onConfirm={onWorkspacePathsPromptConfirm}
         />
@@ -297,6 +341,29 @@ export const AppModals = memo(function AppModals({
             onRecentPathSelect={onMobileRemoteWorkspacePathPromptRecentPathSelect}
             onCancel={onMobileRemoteWorkspacePathPromptCancel}
             onConfirm={onMobileRemoteWorkspacePathPromptConfirm}
+          />
+        </Suspense>
+      )}
+      {remoteDirectoryPicker && (
+        <Suspense fallback={null}>
+          <RemoteDirectoryPickerPrompt
+            title={remoteDirectoryPicker.title}
+            confirmLabel={remoteDirectoryPicker.confirmLabel}
+            currentPath={remoteDirectoryPicker.currentPath}
+            parentPath={remoteDirectoryPicker.parentPath}
+            entries={remoteDirectoryPicker.entries}
+            includeHidden={remoteDirectoryPicker.includeHidden}
+            isLoading={remoteDirectoryPicker.isLoading}
+            loadError={remoteDirectoryPicker.loadError}
+            truncated={remoteDirectoryPicker.truncated}
+            entryCount={remoteDirectoryPicker.entryCount}
+            onBrowseDirectory={onRemoteDirectoryPickerBrowseDirectory}
+            onBrowseParentDirectory={onRemoteDirectoryPickerBrowseParentDirectory}
+            onBrowseHomeDirectory={onRemoteDirectoryPickerBrowseHomeDirectory}
+            onRetryDirectoryListing={onRemoteDirectoryPickerRetryDirectoryListing}
+            onToggleHiddenDirectories={onRemoteDirectoryPickerToggleHiddenDirectories}
+            onCancel={onRemoteDirectoryPickerCancel}
+            onConfirm={onRemoteDirectoryPickerConfirm}
           />
         </Suspense>
       )}
