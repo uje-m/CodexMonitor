@@ -9,7 +9,7 @@ const workspace: WorkspaceInfo = {
   name: "repo",
   path: "/srv/repo",
   connected: true,
-  codex_bin: null,
+
   kind: "main",
   parentId: null,
   worktree: null,

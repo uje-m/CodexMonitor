@@ -149,22 +149,6 @@ export function useWorkspaceDialogs() {
     }
   }, []);
 
-  const requestMobileRemoteWorkspacePaths = useCallback(() => {
-    if (mobileRemoteWorkspacePathResolveRef.current) {
-      resolveMobileRemoteWorkspacePathRequest([]);
-    }
-
-    setMobileRemoteWorkspacePathPrompt({
-      value: "",
-      error: null,
-      recentPaths: recentMobileRemoteWorkspacePaths,
-    });
-
-    return new Promise<string[]>((resolve) => {
-      mobileRemoteWorkspacePathResolveRef.current = resolve;
-    });
-  }, [recentMobileRemoteWorkspacePaths, resolveMobileRemoteWorkspacePathRequest]);
-
   const updateMobileRemoteWorkspacePathInput = useCallback((value: string) => {
     setMobileRemoteWorkspacePathPrompt((prev) =>
       prev
