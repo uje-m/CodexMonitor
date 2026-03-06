@@ -6,10 +6,12 @@ import type { AppSettings, WorkspaceInfo } from "../../../types";
 import {
   addWorkspace,
   isWorkspacePathDir,
+  listRemoteDirectories,
   listWorkspaces,
   pickWorkspacePaths,
   removeWorkspace,
 } from "../../../services/tauri";
+import { pushErrorToast } from "../../../services/toasts";
 import { isMobilePlatform } from "../../../utils/platformPaths";
 import { useWorkspaceController } from "./useWorkspaceController";
 
@@ -25,6 +27,7 @@ vi.mock("../../../services/tauri", () => ({
   addWorktree: vi.fn(),
   connectWorkspace: vi.fn(),
   isWorkspacePathDir: vi.fn(),
+  listRemoteDirectories: vi.fn(),
   listWorkspaces: vi.fn(),
   pickWorkspacePaths: vi.fn(),
   removeWorkspace: vi.fn(),
@@ -34,9 +37,19 @@ vi.mock("../../../services/tauri", () => ({
   updateWorkspaceSettings: vi.fn(),
 }));
 
-vi.mock("../../../utils/platformPaths", () => ({
-  isMobilePlatform: vi.fn(() => false),
+vi.mock("../../../services/toasts", () => ({
+  pushErrorToast: vi.fn(),
 }));
+
+vi.mock("../../../utils/platformPaths", async () => {
+  const actual = await vi.importActual<typeof import("../../../utils/platformPaths")>(
+    "../../../utils/platformPaths",
+  );
+  return {
+    ...actual,
+    isMobilePlatform: vi.fn(() => false),
+  };
+});
 
 const workspaceOne: WorkspaceInfo = {
   id: "ws-1",
@@ -61,16 +74,32 @@ const workspaceTwo: WorkspaceInfo = {
 };
 
 const baseAppSettings = {
+  ...({} as AppSettings),
   codexBin: null,
   backendMode: "local",
   workspaceGroups: [],
-} as unknown as AppSettings;
+} as AppSettings;
 
 describe("useWorkspaceController dialogs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isMobilePlatform).mockReturnValue(false);
     window.localStorage.clear();
+    vi.mocked(listRemoteDirectories).mockResolvedValue({
+      currentPath: "/srv/repos",
+      parentPath: "/srv",
+      entries: [
+        {
+          name: "my-project",
+          path: "/srv/repos/my-project",
+          isSymlink: false,
+          isReadable: true,
+          symlinkTarget: null,
+        },
+      ],
+      truncated: false,
+      entryCount: 1,
+    });
   });
 
   it("shows add-workspaces summary in controller layer", async () => {
@@ -100,6 +129,197 @@ describe("useWorkspaceController dialogs", () => {
     expect(message).toHaveBeenCalledTimes(1);
     const [summary] = vi.mocked(message).mock.calls[0];
     expect(String(summary)).toContain("Skipped 1 already added workspace");
+  });
+
+  it("collects server paths via modal prompt on mobile remote before adding", async () => {
+    const remoteAppSettings = {
+      ...baseAppSettings,
+      backendMode: "remote",
+    } as AppSettings;
+    vi.mocked(isMobilePlatform).mockReturnValue(true);
+    vi.mocked(listWorkspaces).mockResolvedValue([]);
+    vi.mocked(isWorkspacePathDir).mockResolvedValue(true);
+    vi.mocked(addWorkspace).mockResolvedValue(workspaceOne);
+
+    const { result } = renderHook(() =>
+      useWorkspaceController({
+        appSettings: remoteAppSettings,
+        addDebugEntry: vi.fn(),
+        queueSaveSettings: vi.fn(async (next) => next),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    let addPromise: Promise<WorkspaceInfo | null> = Promise.resolve(null);
+    act(() => {
+      addPromise = result.current.addWorkspace();
+    });
+
+    expect(result.current.workspacePathsPrompt).toEqual(
+      expect.objectContaining({
+        value: "",
+        error: null,
+        browser: expect.objectContaining({
+          includeHidden: false,
+        }),
+      }),
+    );
+
+    act(() => {
+      result.current.updateWorkspacePathsPromptValue("/srv/repos/my-project");
+      result.current.confirmWorkspacePathsPrompt();
+    });
+
+    await act(async () => {
+      await addPromise;
+    });
+
+    await expect(addPromise).resolves.toMatchObject({ id: workspaceOne.id });
+    expect(addWorkspace).toHaveBeenCalledWith("/srv/repos/my-project", null);
+    expect(pickWorkspacePaths).not.toHaveBeenCalled();
+  });
+
+  it("keeps the mobile remote path prompt open for empty input", async () => {
+    const remoteAppSettings = {
+      ...baseAppSettings,
+      backendMode: "remote",
+    } as AppSettings;
+    vi.mocked(isMobilePlatform).mockReturnValue(true);
+    vi.mocked(listWorkspaces).mockResolvedValue([]);
+
+    const { result } = renderHook(() =>
+      useWorkspaceController({
+        appSettings: remoteAppSettings,
+        addDebugEntry: vi.fn(),
+        queueSaveSettings: vi.fn(async (next) => next),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    let addPromise: Promise<WorkspaceInfo | null> = Promise.resolve(null);
+    act(() => {
+      addPromise = result.current.addWorkspace();
+    });
+    let resolved = false;
+    addPromise = addPromise.then((value) => {
+      resolved = true;
+      return value;
+    });
+
+    act(() => {
+      result.current.updateWorkspacePathsPromptValue("  , ;\n");
+      result.current.confirmWorkspacePathsPrompt();
+    });
+
+    expect(result.current.workspacePathsPrompt?.error).toBe(
+      "Enter at least one absolute path.",
+    );
+    expect(resolved).toBe(false);
+
+    await act(async () => {
+      result.current.cancelWorkspacePathsPrompt();
+      await addPromise;
+    });
+
+    expect(addWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the mobile remote path prompt open for non-absolute paths", async () => {
+    const remoteAppSettings = {
+      ...baseAppSettings,
+      backendMode: "remote",
+    } as AppSettings;
+    vi.mocked(isMobilePlatform).mockReturnValue(true);
+    vi.mocked(listWorkspaces).mockResolvedValue([]);
+
+    const { result } = renderHook(() =>
+      useWorkspaceController({
+        appSettings: remoteAppSettings,
+        addDebugEntry: vi.fn(),
+        queueSaveSettings: vi.fn(async (next) => next),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    let addPromise: Promise<WorkspaceInfo | null> = Promise.resolve(null);
+    act(() => {
+      addPromise = result.current.addWorkspace();
+    });
+
+    act(() => {
+      result.current.updateWorkspacePathsPromptValue("relative/path");
+      result.current.confirmWorkspacePathsPrompt();
+    });
+
+    expect(result.current.workspacePathsPrompt?.error).toBe("Use absolute paths only.");
+
+    await act(async () => {
+      result.current.cancelWorkspacePathsPrompt();
+      await addPromise;
+    });
+
+    expect(addWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("shows feedback when add workspace is triggered while prompt is already open", async () => {
+    const remoteAppSettings = {
+      ...baseAppSettings,
+      backendMode: "remote",
+    } as AppSettings;
+    vi.mocked(isMobilePlatform).mockReturnValue(true);
+    vi.mocked(listWorkspaces).mockResolvedValue([]);
+
+    const { result } = renderHook(() =>
+      useWorkspaceController({
+        appSettings: remoteAppSettings,
+        addDebugEntry: vi.fn(),
+        queueSaveSettings: vi.fn(async (next) => next),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    let firstAddPromise: Promise<WorkspaceInfo | null> = Promise.resolve(null);
+    let secondAddPromise: Promise<WorkspaceInfo | null> = Promise.resolve(null);
+
+    act(() => {
+      firstAddPromise = result.current.addWorkspace();
+    });
+    act(() => {
+      secondAddPromise = result.current.addWorkspace();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await expect(secondAddPromise).resolves.toBeNull();
+    expect(pushErrorToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Add workspaces",
+      }),
+    );
+    expect(result.current.workspacePathsPrompt).toEqual(
+      expect.objectContaining({
+        value: "",
+        error: null,
+      }),
+    );
+
+    await act(async () => {
+      result.current.cancelWorkspacePathsPrompt();
+      await firstAddPromise;
+    });
   });
 
   it("confirms workspace deletion and reports service errors", async () => {

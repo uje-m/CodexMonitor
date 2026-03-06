@@ -1,131 +1,157 @@
-/** @vitest-environment jsdom */
+// @vitest-environment jsdom
 import { renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  applyCurrentWindowHudEffect,
+  clearCurrentWindowEffects,
+  isLiquidGlassSupported,
+  setLiquidGlassEnabled,
+} from "@services/tauri";
 import { useLiquidGlassEffect } from "./useLiquidGlassEffect";
-import { isGlassSupported, setLiquidGlassEffect } from "tauri-plugin-liquid-glass-api";
-import { Effect, EffectState, getCurrentWindow } from "@tauri-apps/api/window";
 
-vi.mock("tauri-plugin-liquid-glass-api", () => ({
-  isGlassSupported: vi.fn(),
-  setLiquidGlassEffect: vi.fn(),
-  GlassMaterialVariant: {
-    Regular: "regular",
-  },
+vi.mock("@services/tauri", () => ({
+  applyCurrentWindowHudEffect: vi.fn(async () => undefined),
+  clearCurrentWindowEffects: vi.fn(async () => undefined),
+  isLiquidGlassSupported: vi.fn(async () => false),
+  setLiquidGlassEnabled: vi.fn(async () => undefined),
 }));
 
-vi.mock("@tauri-apps/api/window", () => ({
-  Effect: {
-    Acrylic: "acrylic",
-    HudWindow: "hud-window",
-  },
-  EffectState: {
-    Active: "active",
-  },
-  getCurrentWindow: vi.fn(),
-}));
+function setNavigatorState(value: string, platform: string, maxTouchPoints: number) {
+  Object.defineProperty(window.navigator, "userAgent", {
+    configurable: true,
+    value,
+  });
+  Object.defineProperty(window.navigator, "platform", {
+    configurable: true,
+    value: platform,
+  });
+  Object.defineProperty(window.navigator, "maxTouchPoints", {
+    configurable: true,
+    value: maxTouchPoints,
+  });
+}
 
 describe("useLiquidGlassEffect", () => {
-  const originalUserAgent = navigator.userAgent;
-  let mockSetEffects: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSetEffects = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(getCurrentWindow).mockReturnValue({
-      setEffects: mockSetEffects,
-    } as any);
+    setNavigatorState(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+      "MacIntel",
+      0,
+    );
+    vi.mocked(clearCurrentWindowEffects).mockResolvedValue(undefined);
+    vi.mocked(applyCurrentWindowHudEffect).mockResolvedValue(undefined);
+    vi.mocked(isLiquidGlassSupported).mockResolvedValue(false);
+    vi.mocked(setLiquidGlassEnabled).mockResolvedValue(undefined);
   });
 
-  afterEach(() => {
-    Object.defineProperty(window.navigator, "userAgent", {
-      value: originalUserAgent,
-      configurable: true,
-    });
+  it("does not query liquid glass support on mobile reduce-transparency flow", async () => {
+    setNavigatorState(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+      "iPhone",
+      5,
+    );
+
+    renderHook(() =>
+      useLiquidGlassEffect({
+        reduceTransparency: true,
+      }),
+    );
+    await waitFor(() => expect(clearCurrentWindowEffects).toHaveBeenCalledTimes(1));
+
+    expect(isLiquidGlassSupported).not.toHaveBeenCalled();
+    expect(setLiquidGlassEnabled).not.toHaveBeenCalled();
   });
 
-  const setUserAgent = (ua: string) => {
-    Object.defineProperty(window.navigator, "userAgent", {
-      value: ua,
-      configurable: true,
-    });
-  };
+  it("treats desktop-mode iPad user agent as mobile", async () => {
+    setNavigatorState(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Mac OS X) Version/18.0 Mobile/15E148 Safari/604.1",
+      "MacIntel",
+      5,
+    );
 
-  it("clears effects when reduceTransparency is true", async () => {
-    vi.mocked(isGlassSupported).mockResolvedValue(true);
+    renderHook(() =>
+      useLiquidGlassEffect({
+        reduceTransparency: true,
+      }),
+    );
+    await waitFor(() => expect(clearCurrentWindowEffects).toHaveBeenCalledTimes(1));
 
-    renderHook(() => useLiquidGlassEffect({ reduceTransparency: true }));
-
-    await waitFor(() => {
-      expect(mockSetEffects).toHaveBeenCalledWith({ effects: [] });
-      expect(setLiquidGlassEffect).toHaveBeenCalledWith({ enabled: false });
-    });
+    expect(isLiquidGlassSupported).not.toHaveBeenCalled();
+    expect(setLiquidGlassEnabled).not.toHaveBeenCalled();
   });
 
-  it("applies liquid glass plugin if supported", async () => {
-    vi.mocked(isGlassSupported).mockResolvedValue(true);
+  it("enables liquid glass on supported desktop platforms", async () => {
+    vi.mocked(isLiquidGlassSupported).mockResolvedValueOnce(true);
 
-    renderHook(() => useLiquidGlassEffect({ reduceTransparency: false }));
+    renderHook(() =>
+      useLiquidGlassEffect({
+        reduceTransparency: false,
+      }),
+    );
+    await waitFor(() => expect(setLiquidGlassEnabled).toHaveBeenCalledWith(true, 16));
 
-    await waitFor(() => {
-      expect(mockSetEffects).toHaveBeenCalledWith({ effects: [] });
-      expect(setLiquidGlassEffect).toHaveBeenCalledWith(
-        expect.objectContaining({ enabled: true })
-      );
-    });
+    expect(clearCurrentWindowEffects).toHaveBeenCalledTimes(1);
+    expect(isLiquidGlassSupported).toHaveBeenCalledTimes(1);
+    expect(applyCurrentWindowHudEffect).not.toHaveBeenCalled();
   });
 
-  it("applies Acrylic effect on Windows when liquid glass is unsupported", async () => {
-    vi.mocked(isGlassSupported).mockResolvedValue(false);
-    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+  it("falls back to HUD effect when liquid glass is not supported", async () => {
+    vi.mocked(isLiquidGlassSupported).mockResolvedValueOnce(false);
 
-    renderHook(() => useLiquidGlassEffect({ reduceTransparency: false }));
+    renderHook(() =>
+      useLiquidGlassEffect({
+        reduceTransparency: false,
+      }),
+    );
+    await waitFor(() => expect(applyCurrentWindowHudEffect).toHaveBeenCalledWith(16));
 
-    await waitFor(() => {
-      expect(mockSetEffects).toHaveBeenCalledWith({
-        effects: [Effect.Acrylic],
-        state: EffectState.Active,
-      });
-      expect(setLiquidGlassEffect).not.toHaveBeenCalled();
-    });
+    expect(isLiquidGlassSupported).toHaveBeenCalledTimes(1);
+    expect(setLiquidGlassEnabled).not.toHaveBeenCalled();
   });
 
-  it("applies HudWindow effect on macOS when liquid glass is unsupported", async () => {
-    vi.mocked(isGlassSupported).mockResolvedValue(false);
-    setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)");
+  it("logs support errors and still applies HUD fallback on desktop", async () => {
+    vi.mocked(isLiquidGlassSupported).mockRejectedValueOnce(new Error("support boom"));
+    const onDebug = vi.fn();
 
-    renderHook(() => useLiquidGlassEffect({ reduceTransparency: false }));
-
-    await waitFor(() => {
-      expect(mockSetEffects).toHaveBeenCalledWith(
+    renderHook(() =>
+      useLiquidGlassEffect({
+        reduceTransparency: false,
+        onDebug,
+      }),
+    );
+    await waitFor(() =>
+      expect(onDebug).toHaveBeenCalledWith(
         expect.objectContaining({
-          effects: [Effect.HudWindow],
-        })
-      );
-    });
+          label: "liquid-glass/is-supported-error",
+          payload: "support boom",
+        }),
+      ),
+    );
+
+    expect(applyCurrentWindowHudEffect).toHaveBeenCalledWith(16);
   });
 
-  it("applies HudWindow effect on Linux when liquid glass is unsupported", async () => {
-    vi.mocked(isGlassSupported).mockResolvedValue(false);
-    setUserAgent("Mozilla/5.0 (X11; Linux x86_64)");
+  it("logs disable errors in reduce-transparency desktop flow", async () => {
+    vi.mocked(setLiquidGlassEnabled).mockRejectedValueOnce(new Error("disable boom"));
+    const onDebug = vi.fn();
 
-    renderHook(() => useLiquidGlassEffect({ reduceTransparency: false }));
-
-    await waitFor(() => {
-      expect(mockSetEffects).toHaveBeenCalledWith(
+    renderHook(() =>
+      useLiquidGlassEffect({
+        reduceTransparency: true,
+        onDebug,
+      }),
+    );
+    await waitFor(() =>
+      expect(onDebug).toHaveBeenCalledWith(
         expect.objectContaining({
-          effects: [Effect.HudWindow],
-        })
-      );
-    });
-  });
+          label: "liquid-glass/disable-error",
+          payload: "disable boom",
+        }),
+      ),
+    );
 
-  it("does not apply any effect on unknown OS when liquid glass is unsupported", async () => {
-    vi.mocked(isGlassSupported).mockResolvedValue(false);
-    setUserAgent("Mozilla/5.0 (UnknownOS)");
-
-    renderHook(() => useLiquidGlassEffect({ reduceTransparency: false }));
-
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(mockSetEffects).not.toHaveBeenCalled();
+    expect(clearCurrentWindowEffects).toHaveBeenCalledTimes(1);
+    expect(setLiquidGlassEnabled).toHaveBeenCalledWith(false);
   });
 });

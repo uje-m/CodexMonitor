@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "identifier": "com.dimillian.codexmonitor.ios",
+  "identifier": "com.uje.codexmonitor.ios",
   "bundle": {
     "iOS": {
-      "developmentTeam": "Z6P74P6T99"
+      "developmentTeam": "KB2Z6P975B"
     }
   }
 }

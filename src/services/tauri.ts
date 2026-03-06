@@ -106,6 +106,42 @@ export async function getCodexConfigPath(): Promise<string> {
   return invoke<string>("get_codex_config_path");
 }
 
+export async function clearCurrentWindowEffects(): Promise<void> {
+  const windowApi = await import("@tauri-apps/api/window");
+  await windowApi.getCurrentWindow().setEffects({ effects: [] });
+}
+
+export async function applyCurrentWindowHudEffect(radius: number): Promise<void> {
+  const windowApi = await import("@tauri-apps/api/window");
+  await windowApi.getCurrentWindow().setEffects({
+    effects: [windowApi.Effect.HudWindow],
+    state: windowApi.EffectState.Active,
+    radius,
+  });
+}
+
+export async function isLiquidGlassSupported(): Promise<boolean> {
+  const liquidGlassApi = await import("tauri-plugin-liquid-glass-api");
+  return liquidGlassApi.isGlassSupported();
+}
+
+export async function setLiquidGlassEnabled(
+  enabled: boolean,
+  cornerRadius = 16,
+): Promise<void> {
+  const liquidGlassApi = await import("tauri-plugin-liquid-glass-api");
+  if (!enabled) {
+    await liquidGlassApi.setLiquidGlassEffect({ enabled: false });
+    return;
+  }
+
+  await liquidGlassApi.setLiquidGlassEffect({
+    enabled: true,
+    cornerRadius,
+    variant: liquidGlassApi.GlassMaterialVariant.Regular,
+  });
+}
+
 export type TextFileResponse = {
   exists: boolean;
   content: string;
@@ -264,6 +300,40 @@ export async function addWorkspaceFromGitUrl(
 
 export async function isWorkspacePathDir(path: string): Promise<boolean> {
   return invoke<boolean>("is_workspace_path_dir", { path });
+}
+
+export type ListRemoteDirectoriesInput = {
+  path?: string | null;
+  includeHidden?: boolean;
+  limit?: number;
+  offset?: number;
+};
+
+export type RemoteDirectoryEntry = {
+  name: string;
+  path: string;
+  isSymlink: boolean;
+  isReadable: boolean;
+  symlinkTarget: string | null;
+};
+
+export type ListRemoteDirectoriesResponse = {
+  currentPath: string;
+  parentPath: string | null;
+  entries: RemoteDirectoryEntry[];
+  truncated: boolean;
+  entryCount: number;
+};
+
+export async function listRemoteDirectories(
+  input: ListRemoteDirectoriesInput = {},
+): Promise<ListRemoteDirectoriesResponse> {
+  return invoke<ListRemoteDirectoriesResponse>("list_remote_directories", {
+    path: input.path ?? null,
+    includeHidden: input.includeHidden ?? null,
+    limit: input.limit ?? null,
+    offset: input.offset ?? null,
+  });
 }
 
 export async function addClone(
