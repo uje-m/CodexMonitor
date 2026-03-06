@@ -132,7 +132,7 @@ export type WorkspacePathsPromptState = {
 } | null;
 
 export function useWorkspaceDialogs() {
-  const [recentMobileRemoteWorkspacePaths, setRecentMobileRemoteWorkspacePaths] = useState<
+  const [_recentMobileRemoteWorkspacePaths, setRecentMobileRemoteWorkspacePaths] = useState<
     string[]
   >(() => loadRecentRemoteWorkspacePaths());
   const [mobileRemoteWorkspacePathPrompt, setMobileRemoteWorkspacePathPrompt] =
